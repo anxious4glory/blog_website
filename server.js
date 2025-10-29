@@ -2,81 +2,145 @@ import express from "express";
 import bodyParser from "body-parser";
 import axios from "axios";
 
+// Initialize App
 const app = express();
-const port = 3000;
-const API_URL = "http://localhost:4000";
+const port = process.env.PORT || 3000; // Use Render's dynamic port
 
+// In-memory data store (from index.js)
+let posts = [
+  {
+    id: 1,
+    title: "The Rise of Decentralized Finance",
+    content:
+      "Decentralized Finance (DeFi) is an emerging and rapidly evolving field...",
+    author: "Alex Thompson",
+    date: "2023-08-01T10:00:00Z",
+  },
+  {
+    id: 2,
+    title: "The Impact of Artificial Intelligence on Modern Businesses",
+    content:
+      "Artificial Intelligence (AI) is no longer a concept of the future...",
+    author: "Mia Williams",
+    date: "2023-08-05T14:30:00Z",
+  },
+  {
+    id: 3,
+    title: "Sustainable Living: Tips for an Eco-Friendly Lifestyle",
+    content:
+      "Sustainability is more than just a buzzword; it's a way of life...",
+    author: "Samuel Green",
+    date: "2023-08-10T09:15:00Z",
+  },
+];
+let lastId = 3;
+
+// Middleware
 app.use(express.static("public"));
-
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
+app.set("view engine", "ejs");
 
-// Route to render the main page
-app.get("/", async (req, res) => {
-  try {
-    const response = await axios.get(`${API_URL}/posts`);
-    console.log(response);
-    res.render("index.ejs", { posts: response.data });
-  } catch (error) {
-    res.status(500).json({ message: "Error fetching posts" });
-  }
+// --------------- API ROUTES ------------------
+// GET all posts
+app.get("/posts", (req, res) => {
+  res.json(posts);
 });
 
-// Route to render the edit page
+// GET a single post
+app.get("/posts/:id", (req, res) => {
+  const post = posts.find((p) => p.id === parseInt(req.params.id));
+  if (!post) return res.status(404).json({ message: "Post not found" });
+  res.json(post);
+});
+
+// Create new post
+app.post("/posts", (req, res) => {
+  const newId = ++lastId;
+  const post = {
+    id: newId,
+    title: req.body.title,
+    content: req.body.content,
+    author: req.body.author,
+    date: new Date(),
+  };
+  posts.push(post);
+  res.status(201).json(post);
+});
+
+// Update post
+app.patch("/posts/:id", (req, res) => {
+  const post = posts.find((p) => p.id === parseInt(req.params.id));
+  if (!post) return res.status(404).json({ message: "Post not found" });
+
+  if (req.body.title) post.title = req.body.title;
+  if (req.body.content) post.content = req.body.content;
+  if (req.body.author) post.author = req.body.author;
+
+  res.json(post);
+});
+
+// Delete post
+app.delete("/posts/:id", (req, res) => {
+  const index = posts.findIndex((p) => p.id === parseInt(req.params.id));
+  if (index === -1) return res.status(404).json({ message: "Post not found" });
+
+  posts.splice(index, 1);
+  res.json({ message: "Post deleted" });
+});
+
+// --------------- FRONTEND ROUTES ------------------
+// Render home page
+app.get("/", (req, res) => {
+  res.render("index.ejs", { posts });
+});
+
+// Render new post form
 app.get("/new", (req, res) => {
   res.render("modify.ejs", { heading: "New Post", submit: "Create Post" });
 });
 
-app.get("/edit/:id", async (req, res) => {
-  try {
-    const response = await axios.get(`${API_URL}/posts/${req.params.id}`);
-    console.log(response.data);
-    res.render("modify.ejs", {
-      heading: "Edit Post",
-      submit: "Update Post",
-      post: response.data,
-    });
-  } catch (error) {
-    res.status(500).json({ message: "Error fetching post" });
-  }
+// Render edit post form
+app.get("/edit/:id", (req, res) => {
+  const post = posts.find((p) => p.id === parseInt(req.params.id));
+  res.render("modify.ejs", {
+    heading: "Edit Post",
+    submit: "Update Post",
+    post,
+  });
 });
 
-// Create a new post
-app.post("/api/posts", async (req, res) => {
-  try {
-    const response = await axios.post(`${API_URL}/posts`, req.body);
-    console.log(response.data);
-    res.redirect("/");
-  } catch (error) {
-    res.status(500).json({ message: "Error creating post" });
-  }
+// Handle POST form submission for new
+app.post("/api/posts", (req, res) => {
+  const newId = ++lastId;
+  const post = {
+    id: newId,
+    title: req.body.title,
+    content: req.body.content,
+    author: req.body.author,
+    date: new Date(),
+  };
+  posts.push(post);
+  res.redirect("/");
 });
 
-// Partially update a post
-app.post("/api/posts/:id", async (req, res) => {
-  console.log("called");
-  try {
-    const response = await axios.patch(
-      `${API_URL}/posts/${req.params.id}`,
-      req.body
-    );
-    console.log(response.data);
-    res.redirect("/");
-  } catch (error) {
-    res.status(500).json({ message: "Error updating post" });
+// Handle POST for updating
+app.post("/api/posts/:id", (req, res) => {
+  const post = posts.find((p) => p.id === parseInt(req.params.id));
+  if (post) {
+    post.title = req.body.title;
+    post.content = req.body.content;
+    post.author = req.body.author;
   }
+  res.redirect("/");
 });
 
-// Delete a post
-app.get("/api/posts/delete/:id", async (req, res) => {
-  try {
-    await axios.delete(`${API_URL}/posts/${req.params.id}`);
-    res.redirect("/");
-  } catch (error) {
-    res.status(500).json({ message: "Error deleting post" });
-  }
+// Delete via frontend
+app.get("/api/posts/delete/:id", (req, res) => {
+  const index = posts.findIndex((p) => p.id === parseInt(req.params.id));
+  if (index !== -1) posts.splice(index, 1);
+  res.redirect("/");
 });
 
-app.listen(port, () => {
-  console.log(`Backend server is running on http://localhost:${port}`);
-});
+// Start server
+app.listen(port, () => console.log(`Server running on port ${port}`));
